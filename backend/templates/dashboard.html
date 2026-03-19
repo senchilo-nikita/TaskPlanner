@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% load task_extras %}
+{% block title %}Taskplanner{% endblock %}
+{% block content %}
+<main
+    class="dashboard"
+    x-data="{
+        tab: '{{ tab }}',
+        taskPopover: false,
+        friendPopover: false,
+        taskDetailPopover: false,
+        selectedTask: null,
+        friendEditPopover: false,
+        selectedFriend: null,
+        userPopover: false,
+        darkTheme: document.body.classList.contains('theme-dark'),
+        toggleTheme() {
+            this.darkTheme = !this.darkTheme;
+            document.body.classList.toggle('theme-dark', this.darkTheme);
+            localStorage.setItem('taskplanner-theme', this.darkTheme ? 'dark' : 'light');
+        },
+        openTask(task) {
+            this.selectedTask = task;
+            this.taskDetailPopover = true;
+        },
+        openFriend(friend) {
+            this.selectedFriend = friend;
+            this.friendEditPopover = true;
+        }
+    }"
+>
+    <div class="toolbar">
+        <nav class="tabs">
+            <a :class="{ 'tab-active': tab === 'tasks' }" href="/?tab=tasks">Список задач</a>
+            <a :class="{ 'tab-active': tab === 'kanban' }" href="/?tab=kanban">Kanban</a>
+            <a :class="{ 'tab-active': tab === 'friends' }" href="/?tab=friends">Друзья{% if incoming_invitations %} ({{ incoming_invitations|length }}){% endif %}</a>
+        </nav>
+        <div class="user-menu" @click.outside="userPopover = false">
+            <button type="button" class="icon-button" @click="userPopover = !userPopover" aria-label="Меню пользователя">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.33 0-6 1.79-6 4v1h12v-1c0-2.21-2.67-4-6-4Z" fill="currentColor"/>
+                </svg>
+            </button>
+            <section class="user-popover" x-show="userPopover" x-cloak x-transition>
+                <p class="user-email">{{ request.user.email }}</p>
+                <button type="button" class="theme-toggle" @click="toggleTheme()" :aria-label="darkTheme ? 'Переключить на светлую тему' : 'Переключить на темную тему'">
+                    <svg x-show="!darkTheme" x-cloak viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 4a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V5a1 1 0 0 1 1-1Zm0 13a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm8-4a1 1 0 0 1-1 1h-1a1 1 0 0 1 0-2h1a1 1 0 0 1 1 1ZM7 12a1 1 0 0 1-1 1H5a1 1 0 0 1 0-2h1a1 1 0 0 1 1 1Zm9.66 5.24a1 1 0 0 1 1.42 0l.7.71a1 1 0 0 1-1.41 1.41l-.71-.7a1 1 0 0 1 0-1.42ZM6.34 6.34a1 1 0 0 1 1.42 0l.7.71A1 1 0 0 1 7.05 8.46l-.71-.7a1 1 0 0 1 0-1.42Zm12.44 0a1 1 0 0 1 0 1.42l-.7.7a1 1 0 1 1-1.42-1.4l.71-.72a1 1 0 0 1 1.41 0ZM7.76 16.95a1 1 0 0 1 0 1.41l-.7.71a1 1 0 1 1-1.42-1.41l.71-.71a1 1 0 0 1 1.41 0ZM12 18a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0v-1a1 1 0 0 1 1-1Z" fill="currentColor"/>
+                    </svg>
+                    <svg x-show="darkTheme" x-cloak viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M14.77 4.09a1 1 0 0 1 .39 1.37A7 7 0 1 0 18.54 15a1 1 0 0 1 1.4 1.24 9 9 0 1 1-5.59-12.5 1 1 0 0 1 .42.35Z" fill="currentColor"/>
+                    </svg>
+                    <span class="theme-toggle-label" x-text="darkTheme ? 'Светлая тема' : 'Темная тема'"></span>
+                </button>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="button button-primary button-block">Выйти</button>
+                </form>
+            </section>
+        </div>
+    </div>
+
+    {% if tab == "tasks" %}
+        <section>
+            <article class="panel">
+                <div class="panel-head">
+                    <div class="title-inline">
+                        <h2>Список задач</h2>
+                        <button type="button" class="icon-button icon-button-accent" @click="taskPopover = true" aria-label="Добавить задачу">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 0 1 0 2h-5v5a1 1 0 0 1-2 0v-5H6a1 1 0 0 1 0-2h5V6a1 1 0 0 1 1-1Z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="task-list">
+                    {% for task in tasks %}
+                        <button
+                            type="button"
+                            class="task-card compact-task"
+                            @click='openTask({
+                                title: "{{ task.title|escapejs }}",
+                                description: "{{ task.description|default:"Без описания"|escapejs }}",
+                                dueDate: "{{ task.due_date|date:"d.m.Y H:i"|escapejs }}",
+                                priority: "{{ priority_labels|get_item:task.priority|escapejs }}",
+                                status: "{{ task.get_status_display|escapejs }}",
+                                assignee: "{% if task.assignee_id == request.user.id %}Вы{% else %}{{ friend_labels|get_item:task.assignee_id|default:task.assignee.email|escapejs }}{% endif %}",
+                                createdBy: "{% if task.created_by_id == request.user.id %}Вы{% else %}{{ friend_labels|get_item:task.created_by_id|default:task.created_by.email|escapejs }}{% endif %}"
+                            })'
+                        >
+                            <div class="task-top">
+                                <h3>{{ task.title }}</h3>
+                                <span class="badge badge-{{ task.priority }}">{{ priority_labels|get_item:task.priority }}</span>
+                            </div>
+                            <div class="task-summary">
+                                <span class="task-deadline"><span class="task-deadline-label">Срок:</span> {{ task.due_date|date:"d.m.Y H:i" }}</span>
+                                <span class="assignee-pill">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.33 0-6 1.79-6 4v1h12v-1c0-2.21-2.67-4-6-4Z" fill="currentColor"/>
+                                    </svg>
+                                    {% if task.assignee_id == request.user.id %}Вы{% else %}{{ friend_labels|get_item:task.assignee_id|default:task.assignee.email }}{% endif %}
+                                </span>
+                            </div>
+                        </button>
+                    {% empty %}
+                        <p class="muted">Задач пока нет.</p>
+                    {% endfor %}
+                </div>
+            </article>
+        </section>
+    {% elif tab == "kanban" %}
+        <section class="kanban-board-wrap">
+        <section class="kanban-board" data-kanban-board>
+            {% for status_value, status_label in status_choices %}
+                <article class="kanban-column" data-status-column="{{ status_value }}">
+                    <div class="panel-head">
+                        <h2>{{ status_label }}</h2>
+                    </div>
+                    <div class="kanban-stack" data-status-dropzone="{{ status_value }}">
+                        {% for task in kanban|get_item:status_value %}
+                            <button
+                                type="button"
+                                class="task-card compact-task kanban-card"
+                                data-task-card
+                                data-task-id="{{ task.id }}"
+                                data-task-status="{{ task.status }}"
+                                data-update-url="{% url 'update_task_status' task.id %}"
+                                @click='if (!$event.target.closest(".kanban-card.is-dragging")) { openTask({
+                                    title: "{{ task.title|escapejs }}",
+                                    description: "{{ task.description|default:"Без описания"|escapejs }}",
+                                    dueDate: "{{ task.due_date|date:"d.m.Y H:i"|escapejs }}",
+                                    priority: "{{ priority_labels|get_item:task.priority|escapejs }}",
+                                    status: "{{ task.get_status_display|escapejs }}",
+                                    assignee: "{% if task.assignee_id == request.user.id %}Вы{% else %}{{ friend_labels|get_item:task.assignee_id|default:task.assignee.email|escapejs }}{% endif %}",
+                                    createdBy: "{% if task.created_by_id == request.user.id %}Вы{% else %}{{ friend_labels|get_item:task.created_by_id|default:task.created_by.email|escapejs }}{% endif %}"
+                                }) }'
+                            >
+                                <div class="task-top">
+                                    <h3>{{ task.title }}</h3>
+                                    <span class="badge badge-{{ task.priority }}">{{ priority_labels|get_item:task.priority }}</span>
+                                </div>
+                                <div class="task-summary">
+                                    <span class="task-deadline"><span class="task-deadline-label">Срок:</span> {{ task.due_date|date:"d.m.Y H:i" }}</span>
+                                    <span class="assignee-pill">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.33 0-6 1.79-6 4v1h12v-1c0-2.21-2.67-4-6-4Z" fill="currentColor"/>
+                                        </svg>
+                                        {% if task.assignee_id == request.user.id %}Вы{% else %}{{ friend_labels|get_item:task.assignee_id|default:task.assignee.email }}{% endif %}
+                                    </span>
+                                </div>
+                                <span class="kanban-status-label" data-task-status-label>{{ task.get_status_display }}</span>
+                                <p class="drag-hint">Перетащите карточку в нужную колонку.</p>
+                            </button>
+                        {% empty %}
+                            <p class="muted kanban-empty">Нет задач.</p>
+                        {% endfor %}
+                    </div>
+                </article>
+            {% endfor %}
+        </section>
+        </section>
+    {% else %}
+        <section>
+            <article class="panel">
+                <div class="panel-head">
+                    <div class="title-inline">
+                        <h2>Список друзей</h2>
+                        <button type="button" class="icon-button icon-button-accent" @click="friendPopover = true" aria-label="Добавить друга">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 0 1 0 2h-5v5a1 1 0 0 1-2 0v-5H6a1 1 0 0 1 0-2h5V6a1 1 0 0 1 1-1Z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                {% if incoming_invitations %}
+                    <div class="invite-group">
+                        {% for invitation in incoming_invitations %}
+                            <div class="friend-row invite-row">
+                                <div class="friend-main">
+                                    <strong>{{ invitation.sender.email }}</strong>
+                                </div>
+                                <div class="inline-actions">
+                                    <form method="post" action="{% url 'accept_invitation' invitation.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="button button-primary">Подтвердить</button>
+                                    </form>
+                                    <form method="post" action="{% url 'decline_invitation' invitation.id %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="button button-secondary">Отказать</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% if outgoing_invitations %}
+                    <div class="invite-group">
+                        {% for invitation in outgoing_invitations %}
+                            <div class="friend-row invite-row">
+                                <div class="friend-main">
+                                    <strong>{{ invitation.target.email }}</strong>
+                                    <span class="muted invite-date"><span class="invite-date-label">Отправлено</span> {{ invitation.created_at|date:"d.m.Y H:i" }}</span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div class="friend-list">
+                    {% for friendship in friendships %}
+                        <div class="friend-row">
+                            <div class="friend-main">
+                                <strong>{{ friendship.alias|default:friendship.friend.first_name|default:friendship.friend.email }}</strong>
+                                <span class="muted">{{ friendship.friend.email }}</span>
+                            </div>
+                            <button
+                                type="button"
+                                class="icon-button icon-button-edit"
+                                aria-label="Редактировать друга"
+                                @click='openFriend({
+                                    id: "{{ friendship.id }}",
+                                    alias: "{{ friendship.alias|escapejs }}",
+                                    email: "{{ friendship.friend.email|escapejs }}",
+                                    updateUrl: "{% url "update_friend_alias" friendship.id %}",
+                                    deleteUrl: "{% url "delete_friendship" friendship.id %}"
+                                })'
+                            >
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M4 15.5V20h4.5L19 9.5 14.5 5 4 15.5Zm12.71-9.79 2.58 2.58 1-1a1 1 0 0 0 0-1.41l-1.17-1.17a1 1 0 0 0-1.41 0l-1 1Z" fill="currentColor"/>
+                                </svg>
+                            </button>
+                        </div>
+                    {% empty %}
+                        <p class="muted">Друзей пока нет.</p>
+                    {% endfor %}
+                </div>
+            </article>
+        </section>
+    {% endif %}
+
+    <div class="popover-backdrop" x-show="taskPopover" x-transition.opacity @click.self="taskPopover = false" x-cloak>
+        <section class="popover-card" x-show="taskPopover" x-transition>
+            <div class="panel-head">
+                <h2>Новая задача</h2>
+                <button type="button" class="button button-secondary" @click="taskPopover = false">Закрыть</button>
+            </div>
+            <form method="post" class="form-grid">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create_task">
+                {{ task_form.as_p }}
+                <button type="submit" class="button button-primary">Создать задачу</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="popover-backdrop" x-show="taskDetailPopover" x-transition.opacity @click.self="taskDetailPopover = false" x-cloak>
+        <section class="popover-card popover-narrow" x-show="taskDetailPopover" x-transition>
+            <div class="panel-head">
+                <h2 x-text="selectedTask?.title"></h2>
+                <button type="button" class="button button-secondary" @click="taskDetailPopover = false">Закрыть</button>
+            </div>
+            <div class="detail-grid" x-show="selectedTask">
+                <div class="detail-row"><span class="muted">Важность</span><strong x-text="selectedTask?.priority"></strong></div>
+                <div class="detail-row"><span class="muted">Срок</span><strong x-text="selectedTask?.dueDate"></strong></div>
+                <div class="detail-row"><span class="muted">Статус</span><strong x-text="selectedTask?.status"></strong></div>
+                <div class="detail-row"><span class="muted">Исполнитель</span><strong x-text="selectedTask?.assignee"></strong></div>
+                <div class="detail-row"><span class="muted">Автор</span><strong x-text="selectedTask?.createdBy"></strong></div>
+                <div>
+                    <p class="muted">Описание</p>
+                    <p class="detail-description" x-text="selectedTask?.description"></p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="popover-backdrop" x-show="friendEditPopover" x-transition.opacity @click.self="friendEditPopover = false" x-cloak>
+        <section class="popover-card popover-narrow" x-show="friendEditPopover" x-transition>
+            <div class="panel-head">
+                <h2>Редактировать друга</h2>
+                <button type="button" class="button button-secondary" @click="friendEditPopover = false">Закрыть</button>
+            </div>
+            <div class="detail-grid" x-show="selectedFriend">
+                <form :action="selectedFriend?.updateUrl" method="post" class="form-grid">
+                    {% csrf_token %}
+                    <p>
+                        <label for="friend-alias-edit">Имя друга</label>
+                        <input id="friend-alias-edit" type="text" name="alias" :value="selectedFriend?.alias" :placeholder="selectedFriend?.email">
+                    </p>
+                    <p class="muted" x-text="selectedFriend?.email"></p>
+                    <button type="submit" class="button button-primary">Сохранить имя</button>
+                </form>
+                <form :action="selectedFriend?.deleteUrl" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="button button-danger button-block">Удалить друга</button>
+                </form>
+            </div>
+        </section>
+    </div>
+
+    <div class="popover-backdrop" x-show="friendPopover" x-transition.opacity @click.self="friendPopover = false" x-cloak>
+        <section class="popover-card popover-narrow" x-show="friendPopover" x-transition>
+            <div class="panel-head">
+                <h2>Добавить друга</h2>
+                <button type="button" class="button button-secondary" @click="friendPopover = false">Закрыть</button>
+            </div>
+            <form method="post" action="{% url 'invite_friend' %}" class="form-grid">
+                {% csrf_token %}
+                <p>
+                    <label for="friend-email">Email друга</label>
+                    <input id="friend-email" type="email" name="email" placeholder="friend@example.com" required>
+                </p>
+                <button type="submit" class="button button-primary">Отправить приглашение</button>
+            </form>
+        </section>
+    </div>
+</main>
+{% endblock %}

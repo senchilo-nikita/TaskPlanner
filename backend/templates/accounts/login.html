@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Вход | Taskplanner{% endblock %}
+{% block content %}
+<main class="auth-layout">
+    <section class="auth-card">
+        <div class="auth-copy">
+            <p class="eyebrow">Taskplanner</p>
+            <h1>Вход</h1>
+            <p class="muted">Управление задачами, kanban и совместная работа с друзьями.</p>
+        </div>
+        <form method="post" class="form-grid">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="button button-primary">Войти</button>
+        </form>
+        <div class="auth-links">
+            <a href="{% url 'register' %}">Регистрация</a>
+            <a href="{% url 'password_reset' %}">Сбросить пароль</a>
+        </div>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Регистрация | Taskplanner{% endblock %}
+{% block content %}
+<main class="auth-layout">
+    <section class="auth-card">
+        <div class="auth-copy">
+            <p class="eyebrow">Taskplanner</p>
+            <h1>Регистрация</h1>
+            <p class="muted">После регистрации нужно подтвердить email.</p>
+        </div>
+        <form method="post" class="form-grid">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="button button-primary">Создать аккаунт</button>
+        </form>
+        <div class="auth-links">
+            <a href="{% url 'login' %}">Уже есть аккаунт?</a>
+        </div>
+    </section>
+</main>
+{% endblock %}
