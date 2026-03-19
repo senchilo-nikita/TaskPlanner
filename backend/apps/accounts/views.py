@@ -1,4 +1,5 @@
 from collections import defaultdict
+import logging
 
 from django.conf import settings
 from django.contrib import messages
@@ -21,6 +22,8 @@ from apps.tasks.models import Task
 from .forms import LoginForm, PasswordResetConfirmAppForm, PasswordResetRequestForm, RegisterForm
 from .models import User
 from .tokens import email_verification_token
+
+logger = logging.getLogger(__name__)
 
 
 def build_absolute_link(request: HttpRequest, path: str) -> str:
@@ -56,8 +59,13 @@ def register_view(request: HttpRequest) -> HttpResponse:
     form = RegisterForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
-        send_verification_email(request, user)
-        messages.success(request, "Регистрация завершена. Проверьте email для подтверждения аккаунта.")
+        try:
+            send_verification_email(request, user)
+        except Exception:
+            logger.exception("Failed to send verification email for user %s", user.email)
+            messages.error(request, "Аккаунт создан, но письмо подтверждения отправить не удалось. Проверьте настройки почты.")
+        else:
+            messages.success(request, "Регистрация завершена. Проверьте email для подтверждения аккаунта.")
         return redirect("login")
     return render(request, "accounts/register.html", {"form": form})
 
@@ -69,8 +77,13 @@ def login_view(request: HttpRequest) -> HttpResponse:
     if request.method == "POST" and form.is_valid():
         user = form.get_user()
         if not user.is_email_verified:
-            send_verification_email(request, user)
-            messages.error(request, "Email не подтвержден. Мы отправили письмо повторно.")
+            try:
+                send_verification_email(request, user)
+            except Exception:
+                logger.exception("Failed to resend verification email for user %s", user.email)
+                messages.error(request, "Email не подтвержден, и письмо повторно отправить не удалось. Проверьте настройки почты.")
+            else:
+                messages.error(request, "Email не подтвержден. Мы отправили письмо повторно.")
             return redirect("login")
         login(request, user)
         return redirect("dashboard")
@@ -99,7 +112,12 @@ def password_reset_request_view(request: HttpRequest) -> HttpResponse:
         email = form.cleaned_data["email"].lower()
         user = User.objects.filter(email=email).first()
         if user:
-            send_password_reset_email(request, user)
+            try:
+                send_password_reset_email(request, user)
+            except Exception:
+                logger.exception("Failed to send password reset email for user %s", user.email)
+                messages.error(request, "Не удалось отправить письмо для сброса пароля. Проверьте настройки почты.")
+                return redirect("password_reset")
         messages.success(request, "Если пользователь существует, письмо для сброса пароля отправлено.")
         return redirect("login")
     return render(request, "accounts/password_reset_request.html", {"form": form})
