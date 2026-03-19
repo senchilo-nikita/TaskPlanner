@@ -24,9 +24,12 @@ from .tokens import email_verification_token
 
 
 def build_absolute_link(request: HttpRequest, path: str) -> str:
-    scheme = "https" if request.is_secure() else "http"
-    host = request.get_host()
-    return f"{scheme}://{host}{path}"
+    public_base_url = getattr(settings, "PUBLIC_BASE_URL", "") or settings.__dict__.get("PUBLIC_BASE_URL", "")
+    if not public_base_url:
+        public_base_url = request.build_absolute_uri("/").rstrip("/")
+    else:
+        public_base_url = public_base_url.rstrip("/")
+    return f"{public_base_url}{path}"
 
 
 def send_verification_email(request: HttpRequest, user: User) -> None:
